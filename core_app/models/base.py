@@ -5,6 +5,7 @@ from sqlmodel import Field
 class User(rx.Model, table=True):
     username: str = Field(unique=True, index=True)
     email: str = Field(unique=True)
+    password_hash: str = Field(default="")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class ChatSession(rx.Model, table=True):

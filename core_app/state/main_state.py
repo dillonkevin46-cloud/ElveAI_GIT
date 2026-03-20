@@ -2,9 +2,9 @@ import reflex as rx
 import ollama
 from sqlmodel import select
 from core_app.models.base import User, ChatSession, ChatMessage
+from core_app.state.auth_state import AuthState
 
 class MainState(rx.State):
-    current_user_id: int = 1
     user_sessions: list[ChatSession] = []
     active_session_id: int = -1
     current_messages: list[ChatMessage] = []
@@ -13,26 +13,38 @@ class MainState(rx.State):
         self.active_session_id = session_id
 
     def load_sessions(self):
-        with rx.session() as session:
-            user = session.get(User, self.current_user_id)
-            if not user:
-                user = User(id=self.current_user_id, username="Admin", email="admin@local.dev")
-                session.add(user)
-                session.commit()
-                session.refresh(user)
+        auth = self.get_state(AuthState)
+        if not auth.auth_token:
+            return rx.redirect("/login")
 
+        with rx.session() as session:
+            user = session.exec(select(User).where(User.username == auth.auth_token)).first()
+            if not user:
+                return rx.redirect("/login")
+
+            db_user_id = user.id
             self.user_sessions = session.exec(
-                select(ChatSession).where(ChatSession.user_id == self.current_user_id)
+                select(ChatSession).where(ChatSession.user_id == db_user_id)
             ).all()
 
     def create_new_chat(self):
+        auth = self.get_state(AuthState)
+        if not auth.auth_token:
+            return rx.redirect("/login")
+
         with rx.session() as session:
+            user = session.exec(select(User).where(User.username == auth.auth_token)).first()
+            if not user:
+                return rx.redirect("/login")
+
+            db_user_id = user.id
             new_chat = ChatSession(
                 session_name=f"New Chat {len(self.user_sessions) + 1}",
-                user_id=self.current_user_id
+                user_id=db_user_id
             )
             session.add(new_chat)
             session.commit()
+
         self.load_sessions()
 
     def select_session(self, session_id: int):
@@ -50,7 +62,15 @@ class MainState(rx.State):
         if not chat_input or self.active_session_id == -1:
             return
 
+        auth = self.get_state(AuthState)
+        if not auth.auth_token:
+            return rx.redirect("/login")
+
         with rx.session() as session:
+            user = session.exec(select(User).where(User.username == auth.auth_token)).first()
+            if not user:
+                return rx.redirect("/login")
+
             # Insert user message
             user_msg = ChatMessage(
                 session_id=self.active_session_id,
