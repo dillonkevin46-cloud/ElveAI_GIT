@@ -12,8 +12,8 @@ class MainState(rx.State):
     def set_active_session_id(self, session_id: int):
         self.active_session_id = session_id
 
-    def load_sessions(self):
-        auth = self.get_state(AuthState)
+    async def load_sessions(self):
+        auth = await self.get_state(AuthState)
         if not auth.auth_token:
             return rx.redirect("/login")
 
@@ -27,8 +27,8 @@ class MainState(rx.State):
                 select(ChatSession).where(ChatSession.user_id == db_user_id)
             ).all()
 
-    def create_new_chat(self):
-        auth = self.get_state(AuthState)
+    async def create_new_chat(self):
+        auth = await self.get_state(AuthState)
         if not auth.auth_token:
             return rx.redirect("/login")
 
@@ -45,7 +45,7 @@ class MainState(rx.State):
             session.add(new_chat)
             session.commit()
 
-        self.load_sessions()
+        return await self.load_sessions()
 
     def select_session(self, session_id: int):
         self.active_session_id = session_id
@@ -57,19 +57,21 @@ class MainState(rx.State):
                     .order_by(ChatMessage.created_at)
                 ).all()
 
-    def handle_submit(self, form_data: dict):
+    async def handle_submit(self, form_data: dict):
         chat_input = form_data.get("chat_input", "")
         if not chat_input or self.active_session_id == -1:
             return
 
-        auth = self.get_state(AuthState)
+        auth = await self.get_state(AuthState)
         if not auth.auth_token:
-            return rx.redirect("/login")
+            yield rx.redirect("/login")
+            return
 
         with rx.session() as session:
             user = session.exec(select(User).where(User.username == auth.auth_token)).first()
             if not user:
-                return rx.redirect("/login")
+                yield rx.redirect("/login")
+                return
 
             # Insert user message
             user_msg = ChatMessage(
