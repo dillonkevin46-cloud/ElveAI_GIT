@@ -1,4 +1,5 @@
 import reflex as rx
+import ollama
 from sqlmodel import select
 from core_app.models.base import User, ChatSession, ChatMessage
 
@@ -7,6 +8,9 @@ class MainState(rx.State):
     user_sessions: list[ChatSession] = []
     active_session_id: int = -1
     current_messages: list[ChatMessage] = []
+
+    def set_active_session_id(self, session_id: int):
+        self.active_session_id = session_id
 
     def load_sessions(self):
         with rx.session() as session:
@@ -54,15 +58,27 @@ class MainState(rx.State):
                 content=chat_input
             )
             session.add(user_msg)
-
-            # Insert stub AI message
-            ai_msg = ChatMessage(
-                session_id=self.active_session_id,
-                role="assistant",
-                content="I am ElveAI. My local LLM connection is currently being wired up by the Architect."
-            )
-            session.add(ai_msg)
-
             session.commit()
 
         self.select_session(self.active_session_id)
+        yield
+
+        # Build conversation history
+        messages = [{"role": msg.role, "content": msg.content} for msg in self.current_messages]
+
+        # Call local LLM
+        response = ollama.chat(model='llama3.2', messages=messages)
+        ai_text = response['message']['content']
+
+        with rx.session() as session:
+            # Insert AI message
+            ai_msg = ChatMessage(
+                session_id=self.active_session_id,
+                role="assistant",
+                content=ai_text
+            )
+            session.add(ai_msg)
+            session.commit()
+
+        self.select_session(self.active_session_id)
+        yield
