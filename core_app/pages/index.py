@@ -22,11 +22,17 @@ def chat_view() -> rx.Component:
                 rx.foreach(
                     MainState.current_messages,
                     lambda message: rx.box(
-                        rx.markdown(message.content, margin="0"),
+                        rx.markdown(
+                            message.content,
+                            component_map={
+                                "code": lambda text: rx.code_block(text, wrap_long_lines=True, margin_y="1em"),
+                            },
+                            margin="0"
+                        ),
                         bg=rx.cond(message.role == "user", "blue.100", "gray.100"),
                         align_self=rx.cond(message.role == "user", "flex-end", "flex-start"),
                         padding="1em",
-                        border_radius="10px",
+                        border_radius="15px",
                         margin_bottom="1em",
                         max_width="80%",
                     )

@@ -1,5 +1,6 @@
 import reflex as rx
 from core_app.state.main_state import MainState
+from core_app.state.auth_state import AuthState
 
 def sidebar() -> rx.Component:
     return rx.vstack(
@@ -23,14 +24,33 @@ def sidebar() -> rx.Component:
         rx.text("Recent Chats", size="2", weight="bold", color="gray.500"),
         rx.foreach(
             MainState.user_sessions,
-            lambda session: rx.button(
-                session.session_name,
-                on_click=lambda: MainState.select_session(session.id),
-                variant="ghost",
+            lambda session: rx.hstack(
+                rx.button(
+                    session.session_name,
+                    on_click=lambda: MainState.select_session(session.id),
+                    variant="ghost",
+                    flex="1",
+                    justify_content="flex-start",
+                    padding_y="0.5em"
+                ),
+                rx.icon_button(
+                    rx.icon("trash"),
+                    on_click=lambda: MainState.delete_chat(session.id),
+                    variant="ghost",
+                    color="red",
+                    size="1"
+                ),
                 width="100%",
-                justify_content="flex-start",
-                padding_y="0.5em"
+                align_items="center"
             )
+        ),
+        rx.button(
+            "Logout",
+            on_click=AuthState.logout,
+            width="100%",
+            variant="soft",
+            color_scheme="red",
+            margin_top="auto"
         ),
         width="250px",
         height="100vh",
