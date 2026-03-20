@@ -1,9 +1,7 @@
 import reflex as rx
+import bcrypt
 from sqlmodel import select
 from core_app.models.base import User
-from passlib.context import CryptContext
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class AuthState(rx.State):
     auth_token: str = rx.Cookie("")
@@ -15,7 +13,7 @@ class AuthState(rx.State):
 
         with rx.session() as session:
             user = session.exec(select(User).where(User.username == username)).first()
-            if user and pwd_context.verify(password, user.password_hash):
+            if user and bcrypt.checkpw(password.encode('utf-8'), user.password_hash.encode('utf-8')):
                 self.auth_token = user.username
                 self.auth_error = ""
                 return rx.redirect("/")
@@ -31,7 +29,7 @@ class AuthState(rx.State):
             self.auth_error = "All fields are required."
             return
 
-        hashed = pwd_context.hash(password)
+        hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
         with rx.session() as session:
             # Check if user exists
