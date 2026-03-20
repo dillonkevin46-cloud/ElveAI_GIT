@@ -9,6 +9,7 @@ def sidebar() -> rx.Component:
                 rx.icon("layout-dashboard"),
                 rx.text("Dashboard"),
             ),
+            on_click=lambda: MainState.set_active_session_id(-1),
             href="/",
         ),
         rx.link(
@@ -22,7 +23,14 @@ def sidebar() -> rx.Component:
         rx.text("Recent Chats", size="2", weight="bold", color="gray.500"),
         rx.foreach(
             MainState.user_sessions,
-            lambda session: rx.link(session.session_name, padding_y="0.5em")
+            lambda session: rx.button(
+                session.session_name,
+                on_click=lambda: MainState.select_session(session.id),
+                variant="ghost",
+                width="100%",
+                justify_content="flex-start",
+                padding_y="0.5em"
+            )
         ),
         width="250px",
         height="100vh",
@@ -52,6 +60,9 @@ def base_layout(*children) -> rx.Component:
                 *children,
                 padding="2em",
                 width="100%",
+                height="calc(100vh - 80px)",
+                display="flex",
+                flex_direction="column",
             ),
             margin_left="250px",
             width="100%",
