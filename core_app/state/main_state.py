@@ -108,3 +108,22 @@ class MainState(rx.State):
             # Persist the completed AI message
             session.add(self.current_messages[-1])
             session.commit()
+
+    async def delete_chat(self, session_id: int):
+        with rx.session() as session:
+            chat_session = session.exec(select(ChatSession).where(ChatSession.id == session_id)).first()
+            if chat_session:
+                # Delete associated messages
+                messages = session.exec(select(ChatMessage).where(ChatMessage.session_id == session_id)).all()
+                for msg in messages:
+                    session.delete(msg)
+
+                # Delete session
+                session.delete(chat_session)
+                session.commit()
+
+        if self.active_session_id == session_id:
+            self.active_session_id = -1
+            self.current_messages = []
+
+        return await self.load_sessions()
