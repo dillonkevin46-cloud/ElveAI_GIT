@@ -1,4 +1,5 @@
 import reflex as rx
+from core_app.state.main_state import MainState
 
 def sidebar() -> rx.Component:
     return rx.vstack(
@@ -16,6 +17,12 @@ def sidebar() -> rx.Component:
                 rx.text("Settings"),
             ),
             href="/settings",
+        ),
+        rx.button("New Chat", on_click=MainState.create_new_chat, width="100%", margin_y="1em"),
+        rx.text("Recent Chats", size="2", weight="bold", color="gray.500"),
+        rx.foreach(
+            MainState.user_sessions,
+            lambda session: rx.link(session.session_name, padding_y="0.5em")
         ),
         width="250px",
         height="100vh",
