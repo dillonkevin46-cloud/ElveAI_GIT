@@ -1,2 +1,2 @@
-# ElveAI_GIT
-GITREPO
+# ElveAI
+My AI
