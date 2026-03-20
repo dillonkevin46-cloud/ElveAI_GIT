@@ -127,3 +127,23 @@ class MainState(rx.State):
             self.current_messages = []
 
         return await self.load_sessions()
+
+    async def delete_all_chat_history(self):
+        auth = await self.get_state(AuthState)
+        if not auth.auth_token:
+            return rx.redirect("/login")
+
+        with rx.session() as session:
+            user = session.exec(select(User).where(User.username == auth.auth_token)).first()
+            if user:
+                sessions = session.exec(select(ChatSession).where(ChatSession.user_id == user.id)).all()
+                for s in sessions:
+                    messages = session.exec(select(ChatMessage).where(ChatMessage.session_id == s.id)).all()
+                    for msg in messages:
+                        session.delete(msg)
+                    session.delete(s)
+                session.commit()
+
+        self.active_session_id = -1
+        self.current_messages = []
+        return await self.load_sessions()
