@@ -63,22 +63,26 @@ class MainState(rx.State):
         self.select_session(self.active_session_id)
         yield
 
-        # Build conversation history
-        messages = [{"role": msg.role, "content": msg.content} for msg in self.current_messages]
+        # Add empty AI message locally
+        ai_message = ChatMessage(
+            session_id=self.active_session_id,
+            role="assistant",
+            content=""
+        )
+        self.current_messages.append(ai_message)
+        yield
 
-        # Call local LLM
-        response = ollama.chat(model='llama3.2', messages=messages)
-        ai_text = response['message']['content']
+        # Build conversation history (excluding the empty bubble)
+        messages = [{"role": msg.role, "content": msg.content} for msg in self.current_messages[:-1]]
+
+        # Call local LLM with streaming
+        stream = ollama.chat(model='llama3.2', messages=messages, stream=True)
+
+        for chunk in stream:
+            self.current_messages[-1].content += chunk['message']['content']
+            yield
 
         with rx.session() as session:
-            # Insert AI message
-            ai_msg = ChatMessage(
-                session_id=self.active_session_id,
-                role="assistant",
-                content=ai_text
-            )
-            session.add(ai_msg)
+            # Persist the completed AI message
+            session.add(self.current_messages[-1])
             session.commit()
-
-        self.select_session(self.active_session_id)
-        yield
