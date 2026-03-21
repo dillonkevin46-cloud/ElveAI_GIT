@@ -2,18 +2,28 @@ import reflex as rx
 import ollama
 import PyPDF2
 import io
+import google.generativeai as genai
+import os
 from sqlmodel import select
 from core_app.models.base import User, ChatSession, ChatMessage, Document
 from core_app.state.auth_state import AuthState
+
+genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
 
 class MainState(rx.State):
     user_sessions: list[ChatSession] = []
     active_session_id: int = -1
     current_messages: list[ChatMessage] = []
     active_documents: list[Document] = []
-
+    
     selected_persona: str = "Default Assistant"
     personas: list[str] = ["Default Assistant", "Expert Coder", "Creative Writer", "Harsh Critic"]
+    
+    llm_engine: str = "Ollama"
+    engines: list[str] = ["Ollama", "Gemini Pro"]
+
+    def set_llm_engine(self, engine: str):
+        self.llm_engine = engine
 
     def set_active_session_id(self, session_id: int):
         self.active_session_id = session_id
@@ -27,7 +37,7 @@ class MainState(rx.State):
             user = session.exec(select(User).where(User.username == auth.auth_token)).first()
             if not user:
                 return rx.redirect("/login")
-
+                
             db_user_id = user.id
             self.user_sessions = session.exec(
                 select(ChatSession).where(ChatSession.user_id == db_user_id)
@@ -42,9 +52,9 @@ class MainState(rx.State):
             user = session.exec(select(User).where(User.username == auth.auth_token)).first()
             if not user:
                 return rx.redirect("/login")
-
+            
             db_user_id = user.id
-
+            
             # Map selected persona to system prompt
             prompt_map = {
                 "Default Assistant": "You are a helpful AI assistant.",
@@ -53,7 +63,7 @@ class MainState(rx.State):
                 "Harsh Critic": "You are a harsh critic. Be direct and point out flaws mercilessly."
             }
             system_prompt = prompt_map.get(self.selected_persona, "You are a helpful AI assistant.")
-
+            
             new_chat = ChatSession(
                 session_name=f"New Chat {len(self.user_sessions) + 1}",
                 user_id=db_user_id,
@@ -61,7 +71,7 @@ class MainState(rx.State):
             )
             session.add(new_chat)
             session.commit()
-
+            
         return await self.load_sessions()
 
     def select_session(self, session_id: int):
@@ -85,7 +95,7 @@ class MainState(rx.State):
         for file in files:
             file_data = await file.read()
             extracted_text = ""
-
+            
             if file.filename.lower().endswith(".pdf"):
                 pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_data))
                 for page in pdf_reader.pages:
@@ -103,7 +113,7 @@ class MainState(rx.State):
                 )
                 session.add(new_doc)
                 session.commit()
-
+                
                 # Refresh active documents list
                 self.active_documents = session.exec(
                     select(Document)
@@ -137,54 +147,70 @@ class MainState(rx.State):
             )
             session.add(user_msg)
             session.commit()
-
+            
         self.select_session(self.active_session_id)
         yield
-
+        
         # Add empty AI message locally
         ai_message = ChatMessage(
-            session_id=self.active_session_id,
-            role="assistant",
+            session_id=self.active_session_id, 
+            role="assistant", 
             content=""
         )
         self.current_messages.append(ai_message)
         yield
-
+        
         # Build context
         with rx.session() as session:
             chat_session = session.exec(select(ChatSession).where(ChatSession.id == self.active_session_id)).first()
             documents = session.exec(select(Document).where(Document.session_id == self.active_session_id)).all()
-
+            
             system_prompt = chat_session.system_prompt if chat_session else "You are a helpful AI assistant."
             if documents:
                 doc_context = "\n\n".join([doc.content for doc in documents])
                 system_prompt += f"\n\nCONTEXT FROM DOCUMENTS:\n{doc_context}"
 
-        # Construct messages array
-        messages = [{"role": "system", "content": system_prompt}]
-        messages.extend([{"role": msg.role, "content": msg.content} for msg in self.current_messages[:-1]])
-
         # Dynamic Renaming
         if len(self.current_messages) == 2:
             rename_res = ollama.chat(model='llama3.2', messages=[{"role": "user", "content": f"Summarize this in 3 short words for a title: {chat_input}"}])
             new_name = rename_res['message']['content'].strip()
-
+            
             with rx.session() as session:
                 cs = session.exec(select(ChatSession).where(ChatSession.id == self.active_session_id)).first()
                 if cs:
                     cs.session_name = new_name
                     session.add(cs)
                     session.commit()
-
+            
             yield await self.load_sessions()
 
-        # Call local LLM with streaming
-        stream = ollama.chat(model='llama3.2', messages=messages, stream=True)
-
-        for chunk in stream:
-            self.current_messages[-1].content += chunk['message']['content']
-            yield
-
+        if self.llm_engine == "Ollama":
+            # Construct messages array
+            messages = [{"role": "system", "content": system_prompt}]
+            messages.extend([{"role": msg.role, "content": msg.content} for msg in self.current_messages[:-1]])
+            
+            # Call local LLM with streaming
+            stream = ollama.chat(model='llama3.2', messages=messages, stream=True)
+            
+            for chunk in stream:
+                self.current_messages[-1].content += chunk['message']['content']
+                yield
+        
+        elif self.llm_engine == "Gemini Pro":
+            model = genai.GenerativeModel('gemini-1.5-pro', system_instruction=system_prompt)
+            
+            history = []
+            for msg in self.current_messages[:-2]:
+                mapped_role = "model" if msg.role == "assistant" else "user"
+                history.append({"role": mapped_role, "parts": [msg.content]})
+            
+            chat = model.start_chat(history=history)
+            response = chat.send_message(chat_input, stream=True)
+            
+            for chunk in response:
+                self.current_messages[-1].content += chunk.text
+                yield
+            
         with rx.session() as session:
             # Persist the completed AI message
             session.add(self.current_messages[-1])
@@ -203,7 +229,7 @@ class MainState(rx.State):
                 messages = session.exec(select(ChatMessage).where(ChatMessage.session_id == session_id)).all()
                 for msg in messages:
                     session.delete(msg)
-
+                
                 # Delete session
                 session.delete(chat_session)
                 session.commit()
@@ -212,7 +238,7 @@ class MainState(rx.State):
             self.active_session_id = -1
             self.current_messages = []
             self.active_documents = []
-
+            
         return await self.load_sessions()
 
     async def delete_all_chat_history(self):
