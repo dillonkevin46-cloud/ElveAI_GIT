@@ -10,6 +10,7 @@ class MainState(rx.State):
     user_sessions: list[ChatSession] = []
     active_session_id: int = -1
     current_messages: list[ChatMessage] = []
+    active_documents: list[Document] = []
 
     selected_persona: str = "Default Assistant"
     personas: list[str] = ["Default Assistant", "Expert Coder", "Creative Writer", "Harsh Critic"]
@@ -72,6 +73,10 @@ class MainState(rx.State):
                     .where(ChatMessage.session_id == self.active_session_id)
                     .order_by(ChatMessage.created_at)
                 ).all()
+                self.active_documents = session.exec(
+                    select(Document)
+                    .where(Document.session_id == self.active_session_id)
+                ).all()
 
     async def handle_upload(self, files: list[rx.UploadFile]):
         if self.active_session_id == -1:
@@ -98,6 +103,15 @@ class MainState(rx.State):
                 )
                 session.add(new_doc)
                 session.commit()
+
+                # Refresh active documents list
+                self.active_documents = session.exec(
+                    select(Document)
+                    .where(Document.session_id == self.active_session_id)
+                ).all()
+
+        yield rx.toast.success("Document attached to context!")
+        yield rx.clear_selected_files("doc_upload")
 
     async def handle_submit(self, form_data: dict):
         chat_input = form_data.get("chat_input", "")
@@ -197,6 +211,7 @@ class MainState(rx.State):
         if self.active_session_id == session_id:
             self.active_session_id = -1
             self.current_messages = []
+            self.active_documents = []
 
         return await self.load_sessions()
 
@@ -221,4 +236,5 @@ class MainState(rx.State):
 
         self.active_session_id = -1
         self.current_messages = []
+        self.active_documents = []
         return await self.load_sessions()
