@@ -2,9 +2,13 @@ import reflex as rx
 import ollama
 import PyPDF2
 import io
+import google.generativeai as genai
+import os
 from sqlmodel import select
 from core_app.models.base import User, ChatSession, ChatMessage, Document
 from core_app.state.auth_state import AuthState
+
+genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
 
 class MainState(rx.State):
     user_sessions: list[ChatSession] = []
@@ -14,6 +18,12 @@ class MainState(rx.State):
 
     selected_persona: str = "Default Assistant"
     personas: list[str] = ["Default Assistant", "Expert Coder", "Creative Writer", "Harsh Critic"]
+
+    llm_engine: str = "Ollama"
+    engines: list[str] = ["Ollama", "Gemini Pro"]
+
+    def set_llm_engine(self, engine: str):
+        self.llm_engine = engine
 
     def set_active_session_id(self, session_id: int):
         self.active_session_id = session_id
@@ -160,10 +170,6 @@ class MainState(rx.State):
                 doc_context = "\n\n".join([doc.content for doc in documents])
                 system_prompt += f"\n\nCONTEXT FROM DOCUMENTS:\n{doc_context}"
 
-        # Construct messages array
-        messages = [{"role": "system", "content": system_prompt}]
-        messages.extend([{"role": msg.role, "content": msg.content} for msg in self.current_messages[:-1]])
-
         # Dynamic Renaming
         if len(self.current_messages) == 2:
             rename_res = ollama.chat(model='llama3.2', messages=[{"role": "user", "content": f"Summarize this in 3 short words for a title: {chat_input}"}])
@@ -178,12 +184,32 @@ class MainState(rx.State):
 
             yield await self.load_sessions()
 
-        # Call local LLM with streaming
-        stream = ollama.chat(model='llama3.2', messages=messages, stream=True)
+        if self.llm_engine == "Ollama":
+            # Construct messages array
+            messages = [{"role": "system", "content": system_prompt}]
+            messages.extend([{"role": msg.role, "content": msg.content} for msg in self.current_messages[:-1]])
 
-        for chunk in stream:
-            self.current_messages[-1].content += chunk['message']['content']
-            yield
+            # Call local LLM with streaming
+            stream = ollama.chat(model='llama3.2', messages=messages, stream=True)
+
+            for chunk in stream:
+                self.current_messages[-1].content += chunk['message']['content']
+                yield
+
+        elif self.llm_engine == "Gemini Pro":
+            model = genai.GenerativeModel('gemini-1.5-pro', system_instruction=system_prompt)
+
+            history = []
+            for msg in self.current_messages[:-2]:
+                mapped_role = "model" if msg.role == "assistant" else "user"
+                history.append({"role": mapped_role, "parts": [msg.content]})
+
+            chat = model.start_chat(history=history)
+            response = chat.send_message(chat_input, stream=True)
+
+            for chunk in response:
+                self.current_messages[-1].content += chunk.text
+                yield
 
         with rx.session() as session:
             # Persist the completed AI message

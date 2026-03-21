@@ -20,6 +20,17 @@ def sidebar() -> rx.Component:
             ),
             href="/settings",
         ),
+        rx.vstack(
+            rx.text("AI Engine", size="1", weight="bold", color="gray.500"),
+            rx.select(
+                MainState.engines,
+                value=MainState.llm_engine,
+                on_change=MainState.set_llm_engine,
+                width="100%"
+            ),
+            width="100%",
+            margin_bottom="1em"
+        ),
         rx.select(
             MainState.personas,
             value=MainState.selected_persona,
