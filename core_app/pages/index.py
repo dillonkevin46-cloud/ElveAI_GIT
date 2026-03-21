@@ -44,6 +44,23 @@ def chat_view() -> rx.Component:
             width="100%",
             padding_right="1em",
         ),
+        rx.hstack(
+            rx.upload(
+                rx.button("Attach Document (PDF/TXT)", variant="soft", size="1"),
+                id="doc_upload",
+                accept={
+                    ".pdf": ["application/pdf"],
+                    ".txt": ["text/plain"]
+                }
+            ),
+            rx.button(
+                "Upload",
+                on_click=MainState.handle_upload(rx.upload_files(upload_id="doc_upload")),
+                size="1"
+            ),
+            width="100%",
+            padding_y="0.5em"
+        ),
         rx.form(
             rx.hstack(
                 rx.input(name="chat_input", placeholder="Message ElveAI...", flex="1"),

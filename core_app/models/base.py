@@ -11,11 +11,18 @@ class User(rx.Model, table=True):
 class ChatSession(rx.Model, table=True):
     session_name: str
     user_id: int = Field(foreign_key="user.id")
+    system_prompt: str = Field(default="You are a helpful AI assistant.")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     is_active: bool = True
 
 class ChatMessage(rx.Model, table=True):
     session_id: int = Field(foreign_key="chatsession.id")
     role: str
+    content: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class Document(rx.Model, table=True):
+    session_id: int = Field(foreign_key="chatsession.id")
+    filename: str
     content: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
