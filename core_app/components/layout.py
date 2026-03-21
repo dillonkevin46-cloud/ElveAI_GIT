@@ -20,6 +20,13 @@ def sidebar() -> rx.Component:
             ),
             href="/settings",
         ),
+        rx.select(
+            MainState.personas,
+            value=MainState.selected_persona,
+            on_change=MainState.set_selected_persona,
+            placeholder="Select Persona...",
+            width="100%"
+        ),
         rx.button("New Chat", on_click=MainState.create_new_chat, width="100%", margin_y="1em"),
         rx.text("Recent Chats", size="2", weight="bold", color="gray.500"),
         rx.foreach(
